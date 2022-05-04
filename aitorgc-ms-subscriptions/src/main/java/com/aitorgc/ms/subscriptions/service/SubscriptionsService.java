@@ -30,6 +30,16 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class SubscriptionsService {
 
+	private static final String MICROSOFT_SUBSCRIPTIONS_ENDPOINT = "/microsoft/subscriptions";
+	
+	private static final String FAILED_TO_DELETE_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG = "Failed to delete user subscription {} for organization with id {}";
+	private static final String ERROR_CREATING_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG = "Error creating user subscription for organization with id {}";
+	private static final String ORGANIZATION_HAS_SUBSCRIPTIONS_LOG = "Organization with id {} has {} subscriptions";
+	private static final String ORGANIZATION_HAS_NO_SUBSCRIPTIONS_LOG = "Organization with id {} has no subscriptions";
+	private static final String ORGANIZATION_HAS_USER_SYNCHRONIZATION_MODULE_LOG = "The organization with id {} has contracted the user synchronization module";
+	private static final String USER_SYNCHRONIZATION_MODULE_SETTINGS_NOT_FOUND_LOG = "The organization with id {} does not have the user synchronization module settings";
+	private static final String MODULE_CONFIGURATION_NOT_FOUND_LOG = "The organization with id {} does not have the module configuration";
+	
 	private static final String CREATING_USER_SUBSCRIPTION = "Creating user subscription from organization with id {}";
 	private static final String UPDATING_USER_SUBSCRIPTION = "Updating user subscription with id {} from organization with id {}";
 	private static final String DELETING_USER_SUBSCRIPTION = "Deleting user subscription with id {} from organization with id {}";
@@ -65,7 +75,7 @@ public class SubscriptionsService {
 		final Modules modules = fetchModules(organization.getId());
 
 		if (Objects.isNull(modules)) {
-			log.warn("La organización con id {}, no tiene la configuración de módulos", organization.getId());
+			log.warn(MODULE_CONFIGURATION_NOT_FOUND_LOG, organization.getId());
 			return;
 		}
 
@@ -74,12 +84,12 @@ public class SubscriptionsService {
 			final MicrosoftUsers microsoftUsersConfig = fetchMicrosoftUsers(organization.getId());
 
 			if (Objects.isNull(microsoftUsersConfig)) {
-				log.warn("La organización con id {} no tiene la configuración del módulo de sincronización de usuarios",
+				log.warn(USER_SYNCHRONIZATION_MODULE_SETTINGS_NOT_FOUND_LOG,
 						organization.getId());
 				return;
 			}
 
-			log.info("La organización {} tiene contratado el módulo de sincronización de usuarios",
+			log.info(ORGANIZATION_HAS_USER_SYNCHRONIZATION_MODULE_LOG,
 					organization.getId());
 
 			// Para cada una de ellas, recuperamos sus suscripciones de usuarios
@@ -88,13 +98,13 @@ public class SubscriptionsService {
 					.getSubscriptions(organization.getId(), page, TOP).getSubscriptions();
 
 			if (subscriptionList.isEmpty()) {
-				log.info("La organización {} no tiene suscripciones", organization.getId());
+				log.info(ORGANIZATION_HAS_NO_SUBSCRIPTIONS_LOG, organization.getId());
 				// No hay suscripciones
 
 				createMicrosoftUsersSubscription(organization, microsoftUsersConfig.getApplicationId());
 
 			} else {
-				log.info("La organización {} tiene {} suscripciones", organization.getId(), subscriptionList.size());
+				log.info(ORGANIZATION_HAS_SUBSCRIPTIONS_LOG, organization.getId(), subscriptionList.size());
 				// Si tiene alguna suscripción, revisamos la fecha de expiración y la
 				// actualizamos o la recreamos
 				checkCreatedMicrosoftUsersSubscriptions(organization, subscriptionList);
@@ -105,7 +115,7 @@ public class SubscriptionsService {
 
 	private void createMicrosoftUsersSubscription(Organization organization, String applicationId) {
 		try {
-			final String notificationUrl = usersApi + "/microsoft/subscriptions";
+			final String notificationUrl = usersApi + MICROSOFT_SUBSCRIPTIONS_ENDPOINT;
 
 			final CreateMicrosoftUsersSubscriptionRequest createSubscriptionRequest = CreateMicrosoftUsersSubscriptionRequest
 					.builder().applicationId(applicationId).changeType(CHANGE_TYPE)
@@ -115,7 +125,7 @@ public class SubscriptionsService {
 			organizationsClient.createSubscription(organization.getId(), createSubscriptionRequest);
 			log.info(CREATING_USER_SUBSCRIPTION, organization.getId());
 		} catch (FeignException e) {
-			log.error("Error al crear la suscripción de usuarios para la organización con id {}", organization.getId(),
+			log.error(ERROR_CREATING_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG, organization.getId(),
 					e);
 		}
 	}
@@ -154,7 +164,7 @@ public class SubscriptionsService {
 			organizationsClient.deleteSubscription(organization.getId(), subscriptionId);
 			log.info(DELETING_USER_SUBSCRIPTION, subscriptionId, organization.getId());
 		} catch (FeignException e) {
-			log.error("Error al eliminar la suscripción de usuarios {} para la organización con id {}", subscriptionId,
+			log.error(FAILED_TO_DELETE_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG, subscriptionId,
 					organization.getId(), e);
 		}
 	}
