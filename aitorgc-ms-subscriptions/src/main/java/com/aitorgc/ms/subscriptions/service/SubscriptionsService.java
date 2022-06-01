@@ -30,8 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class SubscriptionsService {
 
-	private static final String MICROSOFT_SUBSCRIPTIONS_ENDPOINT = "/microsoft/subscriptions";
-	
+	private static final String MICROSOFT_SUBSCRIPTIONS_ENDPOINT = "/microsoft/users/subscriptions";
+
 	private static final String FAILED_TO_DELETE_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG = "Failed to delete user subscription {} for organization with id {}";
 	private static final String ERROR_CREATING_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG = "Error creating user subscription for organization with id {}";
 	private static final String ORGANIZATION_HAS_SUBSCRIPTIONS_LOG = "Organization with id {} has {} subscriptions";
@@ -39,7 +39,7 @@ public class SubscriptionsService {
 	private static final String ORGANIZATION_HAS_USER_SYNCHRONIZATION_MODULE_LOG = "The organization with id {} has contracted the user synchronization module";
 	private static final String USER_SYNCHRONIZATION_MODULE_SETTINGS_NOT_FOUND_LOG = "The organization with id {} does not have the user synchronization module settings";
 	private static final String MODULE_CONFIGURATION_NOT_FOUND_LOG = "The organization with id {} does not have the module configuration";
-	
+
 	private static final String CREATING_USER_SUBSCRIPTION = "Creating user subscription from organization with id {}";
 	private static final String UPDATING_USER_SUBSCRIPTION = "Updating user subscription with id {} from organization with id {}";
 	private static final String DELETING_USER_SUBSCRIPTION = "Deleting user subscription with id {} from organization with id {}";
@@ -50,7 +50,7 @@ public class SubscriptionsService {
 
 	private static final int USER_SUBSCRIPTION_MAX_LIFE_MINUTES = 41759; // 41760
 
-	@Value("${bookker.internal.apis.users.url}")
+	@Value("${bookker.public.apis.subscriptions.url}")
 	private String usersApi;
 
 	private final OrganizationsClient organizationsClient;
@@ -84,13 +84,11 @@ public class SubscriptionsService {
 			final MicrosoftUsers microsoftUsersConfig = fetchMicrosoftUsers(organization.getId());
 
 			if (Objects.isNull(microsoftUsersConfig)) {
-				log.warn(USER_SYNCHRONIZATION_MODULE_SETTINGS_NOT_FOUND_LOG,
-						organization.getId());
+				log.warn(USER_SYNCHRONIZATION_MODULE_SETTINGS_NOT_FOUND_LOG, organization.getId());
 				return;
 			}
 
-			log.info(ORGANIZATION_HAS_USER_SYNCHRONIZATION_MODULE_LOG,
-					organization.getId());
+			log.info(ORGANIZATION_HAS_USER_SYNCHRONIZATION_MODULE_LOG, organization.getId());
 
 			// Para cada una de ellas, recuperamos sus suscripciones de usuarios
 			int page = 0;
@@ -125,8 +123,7 @@ public class SubscriptionsService {
 			organizationsClient.createSubscription(organization.getId(), createSubscriptionRequest);
 			log.info(CREATING_USER_SUBSCRIPTION, organization.getId());
 		} catch (FeignException e) {
-			log.error(ERROR_CREATING_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG, organization.getId(),
-					e);
+			log.error(ERROR_CREATING_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG, organization.getId(), e);
 		}
 	}
 
@@ -164,8 +161,7 @@ public class SubscriptionsService {
 			organizationsClient.deleteSubscription(organization.getId(), subscriptionId);
 			log.info(DELETING_USER_SUBSCRIPTION, subscriptionId, organization.getId());
 		} catch (FeignException e) {
-			log.error(FAILED_TO_DELETE_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG, subscriptionId,
-					organization.getId(), e);
+			log.error(FAILED_TO_DELETE_USER_SUBSCRIPTION_FOR_ORGANIZATION_LOG, subscriptionId, organization.getId(), e);
 		}
 	}
 
