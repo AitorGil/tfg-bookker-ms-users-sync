@@ -109,7 +109,7 @@ public class MicrosoftUserSubscriptionsService {
 	    }
 
 	    final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(
-		    microsoftUser.id);
+		    microsoftUser);
 	    if (Objects.isNull(bookkerUser)) {
 		// Crear usuario
 		log.info("Hay que crear el usuario en Bookker");
@@ -197,21 +197,21 @@ public class MicrosoftUserSubscriptionsService {
 	if (!Objects.equals(microsoftUser.surname, bookkerUser.getEmail())) {
 	    log.info("Hay que actualizar el apellido del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getSurname(),
 		    microsoftUser.surname);
-	    updateUser.setName(microsoftUser.surname);
+	    updateUser.setSurname(microsoftUser.surname);
 	    mustBeUpdated = true;
 	}
 
 	if (!Objects.equals(microsoftUser.mail, bookkerUser.getEmail())) {
 	    log.info("Hay que actualizar el email del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getEmail(),
 		    microsoftUser.mail);
-	    updateUser.setName(microsoftUser.mail);
+	    updateUser.setEmail(microsoftUser.mail);
 	    mustBeUpdated = true;
 	}
 
 	if (!Objects.equals(microsoftUser.userPrincipalName, bookkerUser.getUpn())) {
 	    log.info("Hay que actualizar el upn del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getUpn(),
 		    microsoftUser.userPrincipalName);
-	    updateUser.setName(microsoftUser.userPrincipalName);
+	    updateUser.setUpn(microsoftUser.userPrincipalName);
 	    mustBeUpdated = true;
 	}
 
@@ -219,7 +219,7 @@ public class MicrosoftUserSubscriptionsService {
 		&& !Objects.equals(microsoftUser.employeeId, bookkerUser.getEmployeeId())) {
 	    log.info("Hay que actualizar el employeeId del usuario. Antiguo: {}. Nuevo: {}",
 		    bookkerUser.getEmployeeId(), microsoftUser.employeeId);
-	    updateUser.setName(microsoftUser.employeeId);
+	    updateUser.setEmployeeId(microsoftUser.employeeId);
 	    mustBeUpdated = true;
 	}
 
@@ -238,7 +238,8 @@ public class MicrosoftUserSubscriptionsService {
     private void deleteUser(final String microsoftUserId) {
 	log.info("Delete user in Bookker with Microsoft Id {}", microsoftUserId);
 
-	final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(microsoftUserId);
+	final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(microsoftUserId,
+		null, null);
 
 	if (!Objects.isNull(bookkerUser)) {
 	    try {
@@ -262,9 +263,14 @@ public class MicrosoftUserSubscriptionsService {
 	return officeLocationFilter.getOfficeLocations().stream().anyMatch(ol -> Objects.equals(ol, officeLocation));
     }
 
-    private com.aitorgc.ms.subscriptions.api.internalapis.users.User fetchBookkerUser(final String microsoftUserId) {
+    private com.aitorgc.ms.subscriptions.api.internalapis.users.User fetchBookkerUser(final User user) {
+	return fetchBookkerUser(user.id, user.userPrincipalName, user.mail);
+    }
+
+    private com.aitorgc.ms.subscriptions.api.internalapis.users.User fetchBookkerUser(final String microsoftUserId,
+	    final String upn, final String email) {
 	try {
-	    return usersClient.findUser(new FindUserRequest(null, null, microsoftUserId)).getUser();
+	    return usersClient.findUser(new FindUserRequest(email, upn, microsoftUserId)).getUser();
 	} catch (FeignException e) {
 	    if (404 == e.status()) {
 		return null;
