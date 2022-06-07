@@ -16,26 +16,29 @@ import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "usersClient", url = "${bookker.internal.apis.users.url}", configuration = UsersFeignClientConfiguration.class)
 public interface UsersClient {
 
-    @PostMapping("/")
-    CreateUserResponse createUser(@RequestBody CreateUserRequest request);
+	@PostMapping("/")
+	CreateUserResponse createUser(@RequestBody CreateUserRequest request);
 
-    @PostMapping("/find")
-    FindUserResponse findUser(@RequestBody FindUserRequest request);
+	@PostMapping("/find")
+	FindUserResponse findUser(@RequestBody FindUserRequest request);
 
-    @PutMapping("/{userId}")
-    UpdateUserResponse updateUser(@PathVariable("userId") String userId, @RequestBody UpdateUserRequest request);
+	@PutMapping("/{userId}")
+	UpdateUserResponse updateUser(@PathVariable("userId") String userId, @RequestBody UpdateUserRequest request);
 
-    @DeleteMapping("/{userId}")
-    void deleteUser(@PathVariable("userId") String userId);
+	@DeleteMapping("/{userId}")
+	void deleteUser(@PathVariable("userId") String userId);
 
-    @GetMapping("/rules/organizations/{organizationId}/default")
-    public UserRule getDefaultOrganizationUserRule(@PathVariable("organizationId") String organizationId);
+	@GetMapping("/rules/organizations/{organizationId}/default")
+	public UserRule getDefaultOrganizationUserRule(@PathVariable("organizationId") String organizationId);
 
-    @GetMapping("/groups/organizations/{organizationId}/default")
-    public GetDefaultOrganizationGroupsResponse getDefaultOrganizationGroups(
-	    @PathVariable("organizationId") String organizationId);
+	@GetMapping("/{userId}/groups")
+	public GetUserGroupsResponse getUserGroups(@PathVariable("userId") String userId);
 
-    @GetMapping("/groups/organizations/{organizationId}")
-    public GetOrganizationGroupsResponse getOrganizationGroups(@PathVariable("organizationId") String organizationId,
-	    @RequestParam(name = "onlySynchronizedGroups", required = false, defaultValue = "false") Boolean onlySynchronizedGroups);
+	@GetMapping("/groups/organizations/{organizationId}/default")
+	public GetDefaultOrganizationGroupsResponse getDefaultOrganizationGroups(
+			@PathVariable("organizationId") String organizationId);
+
+	@GetMapping("/groups/organizations/{organizationId}")
+	public GetOrganizationGroupsResponse getOrganizationGroups(@PathVariable("organizationId") String organizationId,
+			@RequestParam(name = "onlySynchronizedGroups", required = false, defaultValue = "false") Boolean onlySynchronizedGroups);
 }
