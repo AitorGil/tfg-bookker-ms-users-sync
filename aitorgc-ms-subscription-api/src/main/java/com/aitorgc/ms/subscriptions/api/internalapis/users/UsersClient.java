@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  *
@@ -33,4 +34,8 @@ public interface UsersClient {
     @GetMapping("/groups/organizations/{organizationId}/default")
     public GetDefaultOrganizationGroupsResponse getDefaultOrganizationGroups(
 	    @PathVariable("organizationId") String organizationId);
+
+    @GetMapping("/groups/organizations/{organizationId}")
+    public GetOrganizationGroupsResponse getOrganizationGroups(@PathVariable("organizationId") String organizationId,
+	    @RequestParam(name = "onlySynchronizedGroups", required = false, defaultValue = "false") Boolean onlySynchronizedGroups);
 }

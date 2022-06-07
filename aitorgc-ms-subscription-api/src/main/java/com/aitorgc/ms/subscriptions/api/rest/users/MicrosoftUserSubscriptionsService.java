@@ -1,5 +1,6 @@
 package com.aitorgc.ms.subscriptions.api.rest.users;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -8,8 +9,10 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 import com.aitorgc.ms.subscriptions.api.internalapis.organizations.MicrosoftAuth;
+import com.aitorgc.ms.subscriptions.api.internalapis.organizations.MicrosoftGroups;
 import com.aitorgc.ms.subscriptions.api.internalapis.organizations.MicrosoftUserSubscription;
 import com.aitorgc.ms.subscriptions.api.internalapis.organizations.MicrosoftUsers;
+import com.aitorgc.ms.subscriptions.api.internalapis.organizations.Modules;
 import com.aitorgc.ms.subscriptions.api.internalapis.organizations.OfficeLocation;
 import com.aitorgc.ms.subscriptions.api.internalapis.organizations.OrganizationsClient;
 import com.aitorgc.ms.subscriptions.api.internalapis.users.CreateUserRequest;
@@ -46,10 +49,14 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class MicrosoftUserSubscriptionsService {
 
+    private static final String USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG = "User with id {} not found in Microsoft";
     private static final String USER_CREATED_SUCCESSFULLY_LOG = "User with id {} created successfully. Data: Microsoft id {}, email {}, upn {}";
     private static final String USER_OFFICE_LOCATION_IS_NOT_VALID_LOG = "Office location '{}' of the user with Microsoft id {}, is not valid";
     private static final String SUBSCRIPTION_WITH_CLIENT_STATE_IS_NOT_RECOGNIZED_LOG = "Subscription with client state {} is not recognized";
     private static final String MICROSOFT_AUTH_CONFIG_NOT_FOUND_LOG = "Microsoft user authentication module not found from organization with id {}";
+    private static final String MICROSOFT_GROUPS_CONFIG_NOT_FOUND_LOG = "Microsoft groups module not found from organization with id {}";
+    private static final String MICROSOFT_GROUPS_CONFIG_WITH_DELEGATED_PERMISSIONS_LOG = "Microsoft groups module from organization with id {} is configured with delegated permissions";
+    private static final String MODULES_CONFIG_NOT_FOUND_LOG = "Modules config not found from organization with id {}";
 
     private static final String DEFAULT_MOBILE_ROLE_ID = "5220b6a2-8920-4dae-8ff0-ba96707d439d";
 
@@ -76,25 +83,37 @@ public class MicrosoftUserSubscriptionsService {
 
 	// Verificar si la organización tiene el filtro de office location
 	// activado
-	final MicrosoftAuth microsoftAuthConfig = fetchMicrosoftAuthConfig(subscription.getOrganizationId(), true);
-	final MicrosoftUsers microsoftUsersConfig = fetchMicrosoftUsersConfig(subscription.getOrganizationId());
-	if (Objects.isNull(microsoftAuthConfig)) {
-	    log.warn(MICROSOFT_AUTH_CONFIG_NOT_FOUND_LOG, subscription.getOrganizationId());
+	final Modules modulesConfig = fetchModulesConfig(subscription.getOrganizationId());
+
+	if (Objects.isNull(modulesConfig)) {
+	    log.warn(MODULES_CONFIG_NOT_FOUND_LOG, subscription.getOrganizationId());
 	    return;
 	}
 
-	final boolean isDeleted = ChangeType.DELETED.equals(changeNotification.changeType);
-	final String userId = changeNotification.resource.split("/")[1];
+	if (modulesConfig.isEnableMicrosoftUsersSync()) {
 
-	if (isDeleted) {
-	    deleteUser(userId);
-	} else {
-	    createOrUpdateUser(userId, microsoftAuthConfig, microsoftUsersConfig);
+	    final MicrosoftAuth microsoftAuthConfig = fetchMicrosoftAuthConfig(subscription.getOrganizationId(), true);
+	    final MicrosoftUsers microsoftUsersConfig = fetchMicrosoftUsersConfig(subscription.getOrganizationId());
+	    if (Objects.isNull(microsoftAuthConfig)) {
+		log.warn(MICROSOFT_AUTH_CONFIG_NOT_FOUND_LOG, subscription.getOrganizationId());
+		return;
+	    }
+
+	    final boolean isDeleted = ChangeType.DELETED.equals(changeNotification.changeType);
+	    final String userId = changeNotification.resource.split("/")[1];
+
+	    if (isDeleted) {
+		deleteUser(userId);
+	    } else {
+		createOrUpdateUser(userId, microsoftAuthConfig, microsoftUsersConfig,
+			modulesConfig.isAllowMicrosoftGroupSync());
+	    }
+
 	}
     }
 
     private void createOrUpdateUser(final String userId, final MicrosoftAuth microsoftAuthConfig,
-	    final MicrosoftUsers microsoftUsersConfig) {
+	    final MicrosoftUsers microsoftUsersConfig, final boolean microsoftGroupSyncEnabled) {
 	log.info("Create or update user in Bookker with Microsoft Id {}", userId);
 	final MSGraphService msGraphService = constructGraphService(microsoftUsersConfig);
 	final User microsoftUser = fetchMicrosoftUser(userId, msGraphService);
@@ -113,18 +132,19 @@ public class MicrosoftUserSubscriptionsService {
 	    if (Objects.isNull(bookkerUser)) {
 		// Crear usuario
 		log.info("Hay que crear el usuario en Bookker");
-		createUser(microsoftUser, microsoftAuthConfig);
+		createUser(microsoftUser, microsoftAuthConfig, microsoftGroupSyncEnabled);
 	    } else {
 		// Actualizar usuario
 		log.info("Se ha conseguido recuperar el usuario en Bookker {}", bookkerUser.getUpn());
-		updateUser(microsoftUser, bookkerUser, microsoftAuthConfig);
+		updateUser(microsoftUser, bookkerUser, microsoftAuthConfig, microsoftGroupSyncEnabled);
 	    }
 
 	}
 
     }
 
-    private void createUser(final User microsoftUser, final MicrosoftAuth microsoftAuthConfig) {
+    private void createUser(final User microsoftUser, final MicrosoftAuth microsoftAuthConfig,
+	    final boolean microsoftGroupSyncEnabled) {
 
 	final String organizationId = microsoftAuthConfig.getOrganizationId();
 
@@ -149,8 +169,10 @@ public class MicrosoftUserSubscriptionsService {
 	    newBookkerUser.setUserRuleId(defaultUserRule.getId());
 	}
 
-	// TODO: Recuperar grupos sincronizados del usuario (en caso de que el módulo
-	// esté activado)
+	// En caso necesario, sincronizar los grupos del usuario con Microsoft
+	if (microsoftGroupSyncEnabled) {
+	    syncMicrosftGroups(microsoftAuthConfig.getOrganizationId(), microsoftUser, defaultGroups);
+	}
 
 	try {
 	    CreateUserResponse response = usersClient.createUser(new CreateUserRequest(newBookkerUser));
@@ -183,7 +205,7 @@ public class MicrosoftUserSubscriptionsService {
 
     private void updateUser(final User microsoftUser,
 	    final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser,
-	    final MicrosoftAuth microsoftAuthConfig) {
+	    final MicrosoftAuth microsoftAuthConfig, final boolean microsoftGroupSyncEnabled) {
 	UpdateUserRequest.User updateUser = new UpdateUserRequest.User();
 	boolean mustBeUpdated = false;
 
@@ -223,8 +245,13 @@ public class MicrosoftUserSubscriptionsService {
 	    mustBeUpdated = true;
 	}
 
-	// TODO: Actualizar grupos sincronizados en caso de que la organización tenga el
-	// módulo activado
+	// En caso necesario, sincronizar los grupos del usuario con Microsoft
+	if (microsoftGroupSyncEnabled) {
+	    // TODO: Recuperar grupos del usuario en Bookker
+	    // final List<Group> userGroups =
+	    // usersClient.getUserGroups(bookkerUser.getId());
+	    syncMicrosftGroups(microsoftAuthConfig.getOrganizationId(), microsoftUser);
+	}
 
 	if (mustBeUpdated) {
 	    try {
@@ -280,19 +307,31 @@ public class MicrosoftUserSubscriptionsService {
 	}
     }
 
+    private List<Group> fetchOrganizationSynchronizedGroups(final String organizationId) {
+	try {
+	    return usersClient.getOrganizationGroups(organizationId, true).getGroups();
+	} catch (FeignException e) {
+	    if (404 == e.status()) {
+		return null;
+	    }
+
+	    throw e;
+	}
+    }
+
     private User fetchMicrosoftUser(final String userId, final MSGraphService msGraphService) {
 	try {
 	    return msGraphService.getUser(userId);
 	} catch (GraphServiceException e) {
-	    log.error("User with id {} not found in Microsoft", userId);
+	    log.error(USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG, userId);
 
 	    return null;
 	}
     }
 
-    private MSGraphService constructGraphService(final MicrosoftAuth microsoftAuthConfig) {
-	return constructGraphService(new ApplicationCredentials(microsoftAuthConfig.getApplicationId(),
-		microsoftAuthConfig.getApplicationSecret(), microsoftAuthConfig.getTenantId()));
+    private MSGraphService constructGraphService(final MicrosoftGroups microsoftGroupsConfig) {
+	return constructGraphService(new ApplicationCredentials(microsoftGroupsConfig.getApplicationId(),
+		microsoftGroupsConfig.getApplicationSecret(), microsoftGroupsConfig.getTenantId()));
     }
 
     private MSGraphService constructGraphService(final MicrosoftUsers microsoftUsersConfig) {
@@ -307,6 +346,18 @@ public class MicrosoftUserSubscriptionsService {
     private OfficeLocationFilter constructOfficeLocationFilter(final MicrosoftAuth microsoftAuthConfig) {
 	return new OfficeLocationFilter(microsoftAuthConfig.isEnableOfficeLocationsFilter(), microsoftAuthConfig
 		.getOfficeLocations().stream().map(OfficeLocation::getOfficeLocation).collect(Collectors.toList()));
+    }
+
+    private Modules fetchModulesConfig(final String organizationId) {
+	try {
+	    return organizationsClient.getOrganizationModules(organizationId);
+	} catch (FeignException e) {
+	    if (404 == e.status()) {
+		return null;
+	    }
+
+	    throw new OrganizationApiCommunicationException(e);
+	}
     }
 
     private MicrosoftAuth fetchMicrosoftAuthConfig(final String organizationId, final boolean withOfficeLocations) {
@@ -333,6 +384,18 @@ public class MicrosoftUserSubscriptionsService {
 	}
     }
 
+    private MicrosoftGroups fetchMicrosoftGroupsConfig(String organizationId) {
+	try {
+	    return organizationsClient.getMicrosoftGroupsConfig(organizationId);
+	} catch (FeignException e) {
+	    if (404 == e.status()) {
+		return null;
+	    }
+
+	    throw new OrganizationApiCommunicationException(e);
+	}
+    }
+
     private MicrosoftUserSubscription fetchMicrosoftUserSubscription(final String clientState) {
 	try {
 	    return organizationsClient.getSubscription(clientState);
@@ -342,6 +405,45 @@ public class MicrosoftUserSubscriptionsService {
 	    }
 
 	    throw new OrganizationApiCommunicationException(e);
+	}
+    }
+
+    private void syncMicrosftGroups(final String organizationId, final User microsoftUser,
+	    final List<Group> bookkerUserGroupList) {
+	final MicrosoftGroups microsoftGroupsConfig = fetchMicrosoftGroupsConfig(organizationId);
+
+	if (Objects.isNull(microsoftGroupsConfig)) {
+	    log.info(MICROSOFT_GROUPS_CONFIG_NOT_FOUND_LOG, organizationId);
+	    return;
+	}
+
+	if (Boolean.TRUE.equals(microsoftGroupsConfig.getDelegatedPermissions())) {
+	    log.info(MICROSOFT_GROUPS_CONFIG_WITH_DELEGATED_PERMISSIONS_LOG, organizationId);
+	    return;
+	}
+
+	final MSGraphService msGraphService = constructGraphService(microsoftGroupsConfig);
+
+	// Recuperamos los grupos que el usuario tiene en Microsoft
+	final List<String> microsoftUserGroupIdList = fetchMicrosoftUserGroups(microsoftUser, msGraphService);
+
+	// Recuperamos todos los grupos sincronizados de una organización
+	List<Group> synchronizedOrganizationGroupList = fetchOrganizationSynchronizedGroups(organizationId);
+
+	if (!Objects.isNull(synchronizedOrganizationGroupList) && !synchronizedOrganizationGroupList.isEmpty()) {
+
+	}
+    }
+
+    private List<String> fetchMicrosoftUserGroups(final User microsoftUser, final MSGraphService msGraphService) {
+	try {
+	    return msGraphService.getUserGroups(microsoftUser.id).stream().map(g -> g.id).collect(Collectors.toList());
+	} catch (GraphServiceException e) {
+	    if (404 == e.getResponseCode()) {
+		log.error(USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG, microsoftUser.id);
+	    }
+
+	    return new ArrayList<>();
 	}
     }
 

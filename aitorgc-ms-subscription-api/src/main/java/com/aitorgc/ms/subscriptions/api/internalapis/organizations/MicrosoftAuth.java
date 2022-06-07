@@ -19,20 +19,20 @@ import lombok.Data;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class MicrosoftAuth implements Serializable {
 
-	private static final long serialVersionUID = 6778105819894470243L;
+    private static final long serialVersionUID = 6778105819894470243L;
 
-	private final String organizationId;
-	private final String tenantId;
-	private final boolean delegatedPermissions;
-	private final String applicationId;
-	private final String applicationSecret;
-	private final boolean enableEmployeeId;
-	private final boolean enableOfficeLocationsFilter;
-	private final Date expirationDate;
-	private final String createdBy;
-	private final Date createdDate;
-	private final String lastModifiedBy;
-	private final Date lastModifiedDate;
+    private String organizationId;
+    private String tenantId;
+    private boolean delegatedPermissions;
+    private String applicationId;
+    private String applicationSecret;
+    private boolean enableEmployeeId;
+    private boolean enableOfficeLocationsFilter;
+    private Date expirationDate;
+    private String createdBy;
+    private Date createdDate;
+    private String lastModifiedBy;
+    private Date lastModifiedDate;
 
-	private final List<OfficeLocation> officeLocations;
+    private List<OfficeLocation> officeLocations;
 }
