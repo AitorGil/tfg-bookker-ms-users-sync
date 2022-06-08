@@ -50,4 +50,7 @@ public interface OrganizationsClient {
 	@GetMapping("/{organizationId}/modules/microsoftAuth")
 	public MicrosoftAuth getMicrosoftAuthConfig(@PathVariable String organizationId,
 			@RequestParam(name = "withOfficeLocations", defaultValue = "false") boolean withOfficeLocations);
+
+	@GetMapping("/{organizationId}/modules/microsoftGroups")
+	public MicrosoftGroups getMicrosoftGroupsConfig(@PathVariable String organizationId);
 }
