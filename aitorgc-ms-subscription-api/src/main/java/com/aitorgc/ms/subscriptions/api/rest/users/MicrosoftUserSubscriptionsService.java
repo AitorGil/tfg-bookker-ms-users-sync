@@ -51,6 +51,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class MicrosoftUserSubscriptionsService {
 
+	private static final String USER_MAIL_IS_REQUIRED_LOG = "User {} with Microsoft Id {} can't be created or updated because it does not have mail";
 	private static final String USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG = "User with id {} not found in Microsoft";
 	private static final String USER_CREATED_SUCCESSFULLY_LOG = "User with id {} created successfully. Data: Microsoft id {}, email {}, upn {}";
 	private static final String USER_OFFICE_LOCATION_IS_NOT_VALID_LOG = "Office location '{}' of the user with Microsoft id {}, is not valid";
@@ -150,6 +151,11 @@ public class MicrosoftUserSubscriptionsService {
 
 		final String organizationId = microsoftAuthConfig.getOrganizationId();
 
+		if (Strings.isBlank(microsoftUser.mail)) {
+			log.warn(USER_MAIL_IS_REQUIRED_LOG, microsoftUser.id, microsoftUser.userPrincipalName);
+			return;
+		}
+
 		// Crear usuario
 		final CreateUserRequest.User newBookkerUser = new CreateUserRequest.User(microsoftUser.givenName,
 				microsoftUser.surname, microsoftUser.mail, microsoftUser.userPrincipalName, organizationId,
@@ -223,7 +229,7 @@ public class MicrosoftUserSubscriptionsService {
 			mustBeUpdated = true;
 		}
 
-		if (!Objects.equals(microsoftUser.surname, bookkerUser.getEmail())) {
+		if (!Objects.equals(microsoftUser.surname, bookkerUser.getSurname())) {
 			log.info("Hay que actualizar el apellido del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getSurname(),
 					microsoftUser.surname);
 			updateUser.setSurname(microsoftUser.surname);
@@ -233,6 +239,12 @@ public class MicrosoftUserSubscriptionsService {
 		if (!Objects.equals(microsoftUser.mail, bookkerUser.getEmail())) {
 			log.info("Hay que actualizar el email del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getEmail(),
 					microsoftUser.mail);
+
+			if (Strings.isBlank(microsoftUser.mail)) {
+				log.warn(USER_MAIL_IS_REQUIRED_LOG, microsoftUser.id, microsoftUser.userPrincipalName);
+				return;
+			}
+
 			updateUser.setEmail(microsoftUser.mail);
 			mustBeUpdated = true;
 		}
@@ -258,8 +270,8 @@ public class MicrosoftUserSubscriptionsService {
 			final List<Group> userGroups = fetchUserGroups(bookkerUser.getId());
 
 			if (!Objects.isNull(userGroups)) {
-				final SyncUserGroupsResult syncUserGroupsResult = syncMicrosftGroups(
-						microsoftAuthConfig.getOrganizationId(), microsoftUser, userGroups);
+				final SyncUserGroupsResult syncUserGroupsResult = syncMicrosftGroups(bookkerUser.getOrganizationId(),
+						microsoftUser, userGroups);
 				if (syncUserGroupsResult.isHasChanged()) {
 					updateUser.setGroups(
 							syncUserGroupsResult.getGroups().stream().map(Group::getId).collect(Collectors.toList()));
@@ -500,7 +512,7 @@ public class MicrosoftUserSubscriptionsService {
 
 	private List<String> fetchMicrosoftUserGroups(final User microsoftUser, final MSGraphService msGraphService) {
 		try {
-			return msGraphService.getUserGroups(microsoftUser.id).stream().map(g -> g.id).collect(Collectors.toList());
+			return msGraphService.getUserGroups(microsoftUser.id);
 		} catch (GraphServiceException e) {
 			if (404 == e.getResponseCode()) {
 				log.error(USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG, microsoftUser.id);

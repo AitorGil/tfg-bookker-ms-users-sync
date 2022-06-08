@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.List;
 
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * 
@@ -11,9 +12,10 @@ import lombok.Data;
  *
  */
 @Data
+@NoArgsConstructor
 public class GetUserGroupsResponse implements Serializable {
 
 	private static final long serialVersionUID = -6906770358670341476L;
 
-	private final List<Group> groups;
+	private List<Group> groups;
 }

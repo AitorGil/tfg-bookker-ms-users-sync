@@ -2,25 +2,19 @@ package com.aitorgc.ms.subscriptions.api.internalapis.users;
 
 import java.io.Serializable;
 
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
+
 /**
  *
  * @author Aitor Gil Callejo
  */
+@Data
+@RequiredArgsConstructor
 public class UpdateUserResponse implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	private static final long serialVersionUID = 1L;
 
-    private User user;
-
-    protected UpdateUserResponse() {
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
+	private User user;
 
 }
