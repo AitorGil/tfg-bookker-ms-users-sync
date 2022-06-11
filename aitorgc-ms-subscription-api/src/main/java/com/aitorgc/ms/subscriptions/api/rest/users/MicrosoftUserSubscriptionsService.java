@@ -23,6 +23,7 @@ import com.aitorgc.ms.subscriptions.api.internalapis.users.FindUserRequest;
 import com.aitorgc.ms.subscriptions.api.internalapis.users.Group;
 import com.aitorgc.ms.subscriptions.api.internalapis.users.UpdateUserRequest;
 import com.aitorgc.ms.subscriptions.api.internalapis.users.UserRule;
+import com.aitorgc.ms.subscriptions.api.internalapis.users.UserStatus;
 import com.aitorgc.ms.subscriptions.api.internalapis.users.UsersClient;
 import com.aitorgc.ms.subscriptions.api.msgraph.ApplicationCredentials;
 import com.aitorgc.ms.subscriptions.api.msgraph.MSGraphService;
@@ -32,7 +33,6 @@ import com.microsoft.graph.http.GraphServiceException;
 import com.microsoft.graph.logger.DefaultLogger;
 import com.microsoft.graph.models.ChangeNotification;
 import com.microsoft.graph.models.ChangeNotificationCollection;
-import com.microsoft.graph.models.ChangeType;
 import com.microsoft.graph.models.User;
 import com.microsoft.graph.serializer.DefaultSerializer;
 
@@ -102,24 +102,23 @@ public class MicrosoftUserSubscriptionsService {
 				return;
 			}
 
-			final boolean isDeleted = ChangeType.DELETED.equals(changeNotification.changeType);
 			final String userId = changeNotification.resource.split("/")[1];
 
-			if (isDeleted) {
+			final MSGraphService msGraphService = constructGraphService(microsoftUsersConfig);
+			final User microsoftUser = fetchMicrosoftUser(userId, msGraphService);
+
+			if (Objects.isNull(microsoftUser)) {
 				deleteUser(userId);
 			} else {
-				createOrUpdateUser(userId, microsoftAuthConfig, microsoftUsersConfig,
-						modulesConfig.isAllowMicrosoftGroupSync());
+				createOrUpdateUser(microsoftUser, microsoftAuthConfig, modulesConfig.isAllowMicrosoftGroupSync());
 			}
 
 		}
 	}
 
-	private void createOrUpdateUser(final String userId, final MicrosoftAuth microsoftAuthConfig,
-			final MicrosoftUsers microsoftUsersConfig, final boolean microsoftGroupSyncEnabled) {
-		log.info("Create or update user in Bookker with Microsoft Id {}", userId);
-		final MSGraphService msGraphService = constructGraphService(microsoftUsersConfig);
-		final User microsoftUser = fetchMicrosoftUser(userId, msGraphService);
+	private void createOrUpdateUser(final User microsoftUser, final MicrosoftAuth microsoftAuthConfig,
+			final boolean microsoftGroupSyncEnabled) {
+		log.info("Create or update user in Bookker with Microsoft Id {}", microsoftUser.id);
 
 		if (!Objects.isNull(microsoftUser)) {
 			log.info("Se ha conseguido recuperar el usuario en Microsoft {}", microsoftUser.userPrincipalName);
@@ -160,6 +159,9 @@ public class MicrosoftUserSubscriptionsService {
 		final CreateUserRequest.User newBookkerUser = new CreateUserRequest.User(microsoftUser.givenName,
 				microsoftUser.surname, microsoftUser.mail, microsoftUser.userPrincipalName, organizationId,
 				DEFAULT_MOBILE_ROLE_ID, generateRandomPassword());
+
+		newBookkerUser.setMicrosoftId(microsoftUser.id);
+		newBookkerUser.setStatus(UserStatus.ACTIVATED);
 
 		if (microsoftAuthConfig.isEnableEmployeeId()) {
 			newBookkerUser.setEmployeeId(microsoftUser.employeeId);
@@ -249,6 +251,14 @@ public class MicrosoftUserSubscriptionsService {
 			mustBeUpdated = true;
 		}
 
+		if (!Objects.equals(microsoftUser.id, bookkerUser.getMicrosoftId())) {
+			log.info("Hay que actualizar el identificador de Microsoft del usuario. Antiguo: {}. Nuevo: {}",
+					bookkerUser.getMicrosoftId(), microsoftUser.id);
+
+			updateUser.setMicrosoftId(microsoftUser.id);
+			mustBeUpdated = true;
+		}
+
 		if (!Objects.equals(microsoftUser.userPrincipalName, bookkerUser.getUpn())) {
 			log.info("Hay que actualizar el upn del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getUpn(),
 					microsoftUser.userPrincipalName);
@@ -295,7 +305,7 @@ public class MicrosoftUserSubscriptionsService {
 		final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(microsoftUserId,
 				null, null);
 
-		if (!Objects.isNull(bookkerUser)) {
+		if (!Objects.isNull(bookkerUser) && UserStatus.ACTIVATED.equals(bookkerUser.getStatus())) {
 			try {
 				usersClient.deleteUser(bookkerUser.getId());
 			} catch (FeignException e) {
@@ -362,9 +372,12 @@ public class MicrosoftUserSubscriptionsService {
 		try {
 			return msGraphService.getUser(userId);
 		} catch (GraphServiceException e) {
-			log.error(USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG, userId);
+			if (404 == e.getResponseCode()) {
+				log.error(USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG, userId);
+				return null;
+			}
 
-			return null;
+			throw e;
 		}
 	}
 
