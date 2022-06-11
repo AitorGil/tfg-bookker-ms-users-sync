@@ -1,6 +1,7 @@
 package com.aitorgc.ms.subscriptions.api.rest.users;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -51,15 +52,26 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class MicrosoftUserSubscriptionsService {
 
+	private static final String MICROSOFT_USER_FETCHED_LOG = "Microsoft user fetched: Id: {} UserPrincipalName: {} Mail: {}";
 	private static final String USER_MAIL_IS_REQUIRED_LOG = "User {} with Microsoft Id {} can't be created or updated because it does not have mail";
 	private static final String USER_WITH_ID_NOT_FOUND_IN_MICROSOFT_LOG = "User with id {} not found in Microsoft";
 	private static final String USER_CREATED_SUCCESSFULLY_LOG = "User with id {} created successfully. Data: Microsoft id {}, email {}, upn {}";
 	private static final String USER_OFFICE_LOCATION_IS_NOT_VALID_LOG = "Office location '{}' of the user with Microsoft id {}, is not valid";
 	private static final String SUBSCRIPTION_WITH_CLIENT_STATE_IS_NOT_RECOGNIZED_LOG = "Subscription with client state {} is not recognized";
 	private static final String MICROSOFT_AUTH_CONFIG_NOT_FOUND_LOG = "Microsoft user authentication module not found from organization with id {}";
+	private static final String MICROSOFT_USERS_CONFIG_NOT_FOUND_LOG = "Microsoft users module not found from organization with id {}";
 	private static final String MICROSOFT_GROUPS_CONFIG_NOT_FOUND_LOG = "Microsoft groups module not found from organization with id {}";
 	private static final String MICROSOFT_GROUPS_CONFIG_WITH_DELEGATED_PERMISSIONS_LOG = "Microsoft groups module from organization with id {} is configured with delegated permissions";
 	private static final String MODULES_CONFIG_NOT_FOUND_LOG = "Modules config not found from organization with id {}";
+	private static final String USER_GROUPS_NEED_TO_BE_UPDATED_LOG = "User groups need to be updated";
+	private static final String EMPLOYEE_ID_NEEDS_TO_BE_UPDATED_LOG = "Employee id needs to be updated. Old: {}. New: {}";
+	private static final String USER_PRINCIPAL_NAME_NEEDS_TO_BE_UPDATED_LOG = "User principal name needs to be updated. Old: {}. New: {}";
+	private static final String MICROSOFT_ID_NEEDS_TO_BE_UPDATED_LOG = "Microsoft Id needs to be updated. Old: {}. New: {}";
+	private static final String EMAIL_NEEDS_TO_BE_UPDATED_LOG = "Email needs to be updated. Old: {}. New: {}";
+	private static final String SURNAME_NEEDS_TO_BE_UPDATED_LOG = "Surname needs to be updated. Old: {}. New: {}";
+	private static final String USERNAME_NEEDS_TO_BE_UPDATED_LOG = "Username needs to be updated. Old: {}. New: {}";
+	private static final String CREATE_OR_UPDATE_USER_IN_BOOKKER_LOG = "Create or update user in Bookker with Microsoft Id {}";
+	private static final String DELETE_USER_IN_BOOKKER_LOG = "Delete user in Bookker with Microsoft Id {}";
 
 	private static final String DEFAULT_MOBILE_ROLE_ID = "5220b6a2-8920-4dae-8ff0-ba96707d439d";
 
@@ -96,9 +108,14 @@ public class MicrosoftUserSubscriptionsService {
 		if (modulesConfig.isEnableMicrosoftUsersSync()) {
 
 			final MicrosoftAuth microsoftAuthConfig = fetchMicrosoftAuthConfig(subscription.getOrganizationId(), true);
-			final MicrosoftUsers microsoftUsersConfig = fetchMicrosoftUsersConfig(subscription.getOrganizationId());
 			if (Objects.isNull(microsoftAuthConfig)) {
 				log.warn(MICROSOFT_AUTH_CONFIG_NOT_FOUND_LOG, subscription.getOrganizationId());
+				return;
+			}
+
+			final MicrosoftUsers microsoftUsersConfig = fetchMicrosoftUsersConfig(subscription.getOrganizationId());
+			if (Objects.isNull(microsoftUsersConfig)) {
+				log.warn(MICROSOFT_USERS_CONFIG_NOT_FOUND_LOG, subscription.getOrganizationId());
 				return;
 			}
 
@@ -110,6 +127,8 @@ public class MicrosoftUserSubscriptionsService {
 			if (Objects.isNull(microsoftUser)) {
 				deleteUser(userId);
 			} else {
+				log.info(MICROSOFT_USER_FETCHED_LOG, microsoftUser.id, microsoftUser.userPrincipalName,
+						microsoftUser.mail);
 				createOrUpdateUser(microsoftUser, microsoftAuthConfig, modulesConfig.isAllowMicrosoftGroupSync());
 			}
 
@@ -118,29 +137,22 @@ public class MicrosoftUserSubscriptionsService {
 
 	private void createOrUpdateUser(final User microsoftUser, final MicrosoftAuth microsoftAuthConfig,
 			final boolean microsoftGroupSyncEnabled) {
-		log.info("Create or update user in Bookker with Microsoft Id {}", microsoftUser.id);
+		log.info(CREATE_OR_UPDATE_USER_IN_BOOKKER_LOG, microsoftUser.id);
 
-		if (!Objects.isNull(microsoftUser)) {
-			log.info("Se ha conseguido recuperar el usuario en Microsoft {}", microsoftUser.userPrincipalName);
-			final OfficeLocationFilter officeLocationFilter = constructOfficeLocationFilter(microsoftAuthConfig);
+		final OfficeLocationFilter officeLocationFilter = constructOfficeLocationFilter(microsoftAuthConfig);
 
-			if (!userHasValidOfficeLocation(microsoftUser.officeLocation, officeLocationFilter)) {
-				log.warn(USER_OFFICE_LOCATION_IS_NOT_VALID_LOG, microsoftUser.officeLocation, microsoftUser.id);
-				return;
-			}
+		if (!userHasValidOfficeLocation(microsoftUser.officeLocation, officeLocationFilter)) {
+			log.warn(USER_OFFICE_LOCATION_IS_NOT_VALID_LOG, microsoftUser.officeLocation, microsoftUser.id);
+			return;
+		}
 
-			final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(
-					microsoftUser);
-			if (Objects.isNull(bookkerUser)) {
-				// Crear usuario
-				log.info("Hay que crear el usuario en Bookker");
-				createUser(microsoftUser, microsoftAuthConfig, microsoftGroupSyncEnabled);
-			} else {
-				// Actualizar usuario
-				log.info("Se ha conseguido recuperar el usuario en Bookker {}", bookkerUser.getUpn());
-				updateUser(microsoftUser, bookkerUser, microsoftAuthConfig, microsoftGroupSyncEnabled);
-			}
-
+		final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(microsoftUser);
+		if (Objects.isNull(bookkerUser)) {
+			// Crear usuario
+			createUser(microsoftUser, microsoftAuthConfig, microsoftGroupSyncEnabled);
+		} else {
+			// Actualizar usuario
+			updateUser(microsoftUser, bookkerUser, microsoftAuthConfig, microsoftGroupSyncEnabled);
 		}
 
 	}
@@ -225,22 +237,19 @@ public class MicrosoftUserSubscriptionsService {
 		boolean mustBeUpdated = false;
 
 		if (!Objects.equals(microsoftUser.givenName, bookkerUser.getName())) {
-			log.info("Hay que actualizar el nombre del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getName(),
-					microsoftUser.givenName);
+			log.info(USERNAME_NEEDS_TO_BE_UPDATED_LOG, bookkerUser.getName(), microsoftUser.givenName);
 			updateUser.setName(microsoftUser.givenName);
 			mustBeUpdated = true;
 		}
 
 		if (!Objects.equals(microsoftUser.surname, bookkerUser.getSurname())) {
-			log.info("Hay que actualizar el apellido del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getSurname(),
-					microsoftUser.surname);
+			log.info(SURNAME_NEEDS_TO_BE_UPDATED_LOG, bookkerUser.getSurname(), microsoftUser.surname);
 			updateUser.setSurname(microsoftUser.surname);
 			mustBeUpdated = true;
 		}
 
 		if (!Objects.equals(microsoftUser.mail, bookkerUser.getEmail())) {
-			log.info("Hay que actualizar el email del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getEmail(),
-					microsoftUser.mail);
+			log.info(EMAIL_NEEDS_TO_BE_UPDATED_LOG, bookkerUser.getEmail(), microsoftUser.mail);
 
 			if (Strings.isBlank(microsoftUser.mail)) {
 				log.warn(USER_MAIL_IS_REQUIRED_LOG, microsoftUser.id, microsoftUser.userPrincipalName);
@@ -252,15 +261,14 @@ public class MicrosoftUserSubscriptionsService {
 		}
 
 		if (!Objects.equals(microsoftUser.id, bookkerUser.getMicrosoftId())) {
-			log.info("Hay que actualizar el identificador de Microsoft del usuario. Antiguo: {}. Nuevo: {}",
-					bookkerUser.getMicrosoftId(), microsoftUser.id);
+			log.info(MICROSOFT_ID_NEEDS_TO_BE_UPDATED_LOG, bookkerUser.getMicrosoftId(), microsoftUser.id);
 
 			updateUser.setMicrosoftId(microsoftUser.id);
 			mustBeUpdated = true;
 		}
 
 		if (!Objects.equals(microsoftUser.userPrincipalName, bookkerUser.getUpn())) {
-			log.info("Hay que actualizar el upn del usuario. Antiguo: {}. Nuevo: {}", bookkerUser.getUpn(),
+			log.info(USER_PRINCIPAL_NAME_NEEDS_TO_BE_UPDATED_LOG, bookkerUser.getUpn(),
 					microsoftUser.userPrincipalName);
 			updateUser.setUpn(microsoftUser.userPrincipalName);
 			mustBeUpdated = true;
@@ -268,8 +276,7 @@ public class MicrosoftUserSubscriptionsService {
 
 		if (microsoftAuthConfig.isEnableEmployeeId()
 				&& !Objects.equals(microsoftUser.employeeId, bookkerUser.getEmployeeId())) {
-			log.info("Hay que actualizar el employeeId del usuario. Antiguo: {}. Nuevo: {}",
-					bookkerUser.getEmployeeId(), microsoftUser.employeeId);
+			log.info(EMPLOYEE_ID_NEEDS_TO_BE_UPDATED_LOG, bookkerUser.getEmployeeId(), microsoftUser.employeeId);
 			updateUser.setEmployeeId(microsoftUser.employeeId);
 			mustBeUpdated = true;
 		}
@@ -283,8 +290,10 @@ public class MicrosoftUserSubscriptionsService {
 				final SyncUserGroupsResult syncUserGroupsResult = syncMicrosftGroups(bookkerUser.getOrganizationId(),
 						microsoftUser, userGroups);
 				if (syncUserGroupsResult.isHasChanged()) {
+					log.info(USER_GROUPS_NEED_TO_BE_UPDATED_LOG);
 					updateUser.setGroups(
 							syncUserGroupsResult.getGroups().stream().map(Group::getId).collect(Collectors.toList()));
+					mustBeUpdated = true;
 				}
 			}
 
@@ -300,8 +309,7 @@ public class MicrosoftUserSubscriptionsService {
 	}
 
 	private void deleteUser(final String microsoftUserId) {
-		log.info("Delete user in Bookker with Microsoft Id {}", microsoftUserId);
-
+		log.info(DELETE_USER_IN_BOOKKER_LOG, microsoftUserId);
 		final com.aitorgc.ms.subscriptions.api.internalapis.users.User bookkerUser = fetchBookkerUser(microsoftUserId,
 				null, null);
 
@@ -492,8 +500,9 @@ public class MicrosoftUserSubscriptionsService {
 		}
 
 		// Añadimos todos los grupos no sincronizados que ya tenia el usuario
-		final Set<Group> newUserGroupList = bookkerUserGroupList.stream()
-				.filter(g -> Strings.isBlank(g.getMicrosoftId())).collect(Collectors.toSet());
+		final Set<Group> newUserGroupList = Objects.isNull(bookkerUserGroupList) ? new HashSet<>()
+				: bookkerUserGroupList.stream().filter(g -> Strings.isBlank(g.getMicrosoftId()))
+						.collect(Collectors.toSet());
 
 		// Comprobamos los grupos sincronizados de la organización
 		for (Group organizationGroup : synchronizedOrganizationGroupList) {
@@ -505,8 +514,8 @@ public class MicrosoftUserSubscriptionsService {
 			}
 
 			final boolean groupIsInAzure = microsoftUserGroupIdList.contains(groupMicrosoftId);
-			final boolean userHasGroup = bookkerUserGroupList.stream()
-					.anyMatch(g -> Objects.equals(groupId, g.getId()));
+			final boolean userHasGroup = !Objects.isNull(bookkerUserGroupList)
+					&& bookkerUserGroupList.stream().anyMatch(g -> Objects.equals(groupId, g.getId()));
 
 			// Añadir grupo -> Si tiene el grupo asignado en azure y no en Bookker
 			if (groupIsInAzure && !userHasGroup) {
