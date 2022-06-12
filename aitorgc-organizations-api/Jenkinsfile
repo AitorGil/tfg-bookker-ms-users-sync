@@ -1,0 +1,7 @@
+bookkerB2bPipelineSonar{
+    jdk = 'openjdk-11'
+    REPOSITORY_URI_ECR = '971768752984.dkr.ecr.eu-west-1.amazonaws.com'
+    AWS_DEFAULT_REGION = 'eu-west-1'
+    AWS_ECS_CLUSTER = 'bookker-b2b-develop'
+    AWS_ECS_SERVICE = 'organizations-api-service'
+}
