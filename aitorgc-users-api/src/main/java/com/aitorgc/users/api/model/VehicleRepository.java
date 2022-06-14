@@ -17,13 +17,13 @@ public interface VehicleRepository extends JpaRepository<VehicleEntity, VehicleP
 
     List<VehicleEntity> findAllByVehiclePKLicensePlate(String licensePlate);
 
-    @Query("FROM VehicleDAO v WHERE v.vehiclePK.userId IN (SELECT u.id FROM UserDAO u WHERE u.organizationId = :organizationId)")
+    @Query("FROM VehicleEntity v WHERE v.vehiclePK.userId IN (SELECT u.id FROM UserEntity u WHERE u.organizationId = :organizationId)")
     List<VehicleEntity> findAllWhereVehiclePKUserIdIn(@Param("organizationId") String organizationId);
 
-    @Query("FROM VehicleDAO v WHERE v.vehiclePK.userId = :userId")
+    @Query("FROM VehicleEntity v WHERE v.vehiclePK.userId = :userId")
     List<VehicleEntity> findAllUserVehiclesByUserId(@Param("userId") String userId);
 
-    @Query("FROM VehicleDAO v WHERE v.vehiclePK.userId = :userId")
+    @Query("FROM VehicleEntity v WHERE v.vehiclePK.userId = :userId")
     Page<VehicleEntity> findAllUserVehiclesByUserId(@Param("userId") String userId, Pageable pageable);
 
     long countByVehiclePKUserId(String userId);
